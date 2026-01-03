@@ -1,0 +1,388 @@
+#+TITLE: Emacs Config
+#+PROPERTY: header-args :tangle config.el
+
+** About
+This is an excuse to learn a little bit about org-mode, try out literate programming, and see if this can be applied to other
+problems (literate dev-ops?).
+
+*** Emacs Lisp Crash Course
+
+So this is my first interaction with any Lisp-type langauge. Here are
+some notes that I'll keep here during my process of learning.
+
+Emacs Lisp code is mostly lists in prefix form:
+#+begin_src
+  (func arg1 arg2 arg3)
+#+end_src
+Where the first position is the operator with the rest being arguments.
+
+Operators can be functions, macros, or special forms.
+
+- A symbol is simply a name, like "inhibit-startup-message".
+
+- A special form is something like "setq", "if", "unless" that control evaluation.
+
+- A quote is used to prevent the evaluation of a list
+
+** Package Management
+
+#+begin_src emacs-lisp
+  (require 'package)
+
+  (setq package-archives
+        '(("melpa" . "https://melpa.org/packages/")
+          ("org"   . "https://orgmode.org/elpa/")
+          ("elpa"  . "https://elpa.gnu.org/packages/")))
+
+  (package-initialize)
+
+  (unless package-archive-contents
+    (package-refresh-contents))
+
+  ;; Bootstrap use-package.
+  (unless (package-installed-p 'use-package)
+    (package-install 'use-package))
+
+  (require 'use-package)
+  (setq use-package-always-ensure t)
+
+#+end_src
+
+** Core Editing Behaviour
+
+#+begin_src emacs-lisp
+  (setq scroll-preserve-screen-position 'always)
+  (setq kill-whole-line t)
+  (delete-selection-mode 1)
+  (global-display-line-numbers-mode 1)
+#+end_src
+
+** Theme
+
+#+begin_src emacs-lisp
+  (setq custom-safe-themes t)
+  (setq doom-themes-enable-italic nil
+        doom-themes-enable-bold nil)
+
+  ;; Theme selection (using doom-themes).
+  (use-package doom-themes
+    :config
+    ;; Load theme
+    (load-theme 'doom-spacegrey))
+
+  ;; Modern, compact modeline.
+  (use-package doom-modeline
+    :init
+    (doom-modeline-mode 1)
+    :custom
+    (doom-modeline-height 100))
+
+#+end_src
+
+** Consult and Friends
+
+#+begin_src emacs-lisp
+  ;; Persist minibuffer history (M-x, find-file, etc).
+  (use-package savehist
+    :init
+    (savehist-mode 1))
+
+  ;; Vertico: completion UI in the minibuffer.
+  (use-package vertico
+    :init
+    (vertico-mode 1))
+
+  ;; Orderless: flexible matching style (type words in any order).
+  (use-package orderless
+    :init
+    (setq completion-styles '(orderless basic)
+          completion-category-defaults nil
+          ;; Keep file completion sane.
+          completion-category-overrides '((file (styles basic partial-completion)))))
+
+  ;; Marginalia: extra annotations in completion lists.
+  (use-package marginalia
+    :bind (:map minibuffer-local-map
+                ("M-A" . marginalia-cycle))  ;; cycle annotation styles
+    :init
+    (marginalia-mode 1))
+
+  ;;; ------------------------------------------------------------
+  ;;; Navigation, search & actions (Consult + Embark)
+  ;;; ------------------------------------------------------------
+
+  ;; Consult: better buffer switcher, search, goto-line, etc.
+  (use-package consult
+    :bind (("C-x b"   . consult-buffer)      ;; switch buffers
+           ("C-s"   . consult-line)        ;; search in current buffer
+           ("M-s r"   . consult-ripgrep)     ;; ripgrep in project/dir
+           ("M-s g"   . consult-grep)        ;; grep in project/dir
+           ("M-s i"   . consult-imenu)       ;; symbols in this buffer
+           ("M-g g"   . consult-goto-line)   ;; goto line with preview
+           ("M-g M-g" . consult-goto-line))) ;; same as above
+
+  ;; Embark: take actions on the thing at point / current candidate.
+  (use-package embark
+    :bind (("C-."   . embark-act)                 ;; context menu for current thing
+           ("C-;"   . embark-dwim)                ;; do-what-I-mean
+           ("C-h B" . embark-bindings))           ;; show active keybindings
+    :init
+    ;; Use Embark for prefix help (shows possible keybindings).
+    (setq prefix-help-command #'embark-prefix-help-command))
+
+  ;; Embark-Consult: live previews in Embark collect buffers, etc.
+  (use-package embark-consult
+    :after (embark consult)
+    :hook
+    (embark-collect-mode . consult-preview-at-point-mode))
+
+#+end_src
+** Project
+
+#+begin_src emacs-lisp
+  (require 'project)
+
+  ;; Put everything under the standard C-x p prefix.
+  (with-eval-after-load 'project
+    ;; Buffers & files
+    (define-key project-prefix-map (kbd "b") #'consult-project-buffer)
+    (define-key project-prefix-map (kbd "f") #'project-find-file)
+
+    ;; Compile current project (prompts once per project, then remembers)
+    (define-key project-prefix-map (kbd "c") #'project-compile)
+
+    ;; Re-run the last compile from the project root
+    (defun my/project-recompile ()
+      (interactive)
+      (let* ((project (project-current t))
+             (default-directory (project-root project)))
+        (recompile)))
+    (define-key project-prefix-map (kbd "r") #'my/project-recompile)
+
+    ;; Project shell / eshell (nice for running tools in project root)
+    (define-key project-prefix-map (kbd "s") #'project-shell)
+    (define-key project-prefix-map (kbd "e") #'project-eshell))
+
+  (add-to-list 'display-buffer-alist
+               '("\\*compilation\\*"
+                 (display-buffer-reuse-window
+                  display-buffer-in-side-window)
+                 (side . right)
+                 (window-width . 0.45)))
+
+  (setq compilation-scroll-output t)
+#+end_src
+
+** LSP
+
+#+begin_src emacs-lisp
+  (use-package eglot
+    :hook ((c-mode c++-mode c++-ts-mode) . eglot-ensure)
+    :config
+    ;; Tell eglot to use clangd for C / C++
+    (add-to-list 'eglot-server-programs
+                 '((c-mode c++-mode c++-ts-mode) . ("clangd")))
+
+    ;; Format buffer using clangd (respects project .clang-format)
+    (define-key eglot-mode-map (kbd "C-c f") #'eglot-format))
+
+  ;; Tree-sitter auto setup
+  (use-package treesit-auto
+    :ensure t
+    :custom
+    ;; Ask before downloading grammars the first time
+    (treesit-auto-install 'prompt)
+    :config
+    ;; Use tree-sitter modes when available
+    (treesit-auto-add-to-auto-mode-alist 'all)
+    (global-treesit-auto-mode))
+
+  (setq major-mode-remap-alist
+        '((c-mode   . c-ts-mode)
+          (c++-mode . c++-ts-mode)))
+
+  (setq treesit-language-source-alist
+        '((c   "https://github.com/tree-sitter/tree-sitter-c")
+          (cpp "https://github.com/tree-sitter/tree-sitter-cpp")))
+
+  ;; M-x treesit-install-language-grammar RET cpp RET
+#+end_src
+** Debugging
+
+Make sure to run: ulimit -c unlimited
+
+#+begin_src emacs-lisp
+  (defvar my/gdb-program nil
+    "Absolute path to the binary to debug for the current Emacs session.")
+
+  (defun my/project-root ()
+    "Return current project root or `default-directory' as a fallback."
+    (if-let ((proj (project-current)))
+        (project-root proj)
+      default-directory))
+
+  (defun my/gdb-set-program (path)
+    "Set `my/gdb-program' to PATH (read interactively)."
+    (interactive
+     (list
+      (expand-file-name
+       (read-file-name
+        "Binary to debug: "
+        (my/project-root) nil t))))
+    (setq my/gdb-program path)
+    (message "Debug program set to: %s" my/gdb-program))
+
+  (defun my/lldb (cmdline)
+    "Start plain lldb using CMDLINE (uses last token as binary)."
+    (let* ((parts (split-string cmdline " "))
+           (binary (car (last parts))))
+      (term (format "lldb %s" binary))))
+
+  (defun my/gdb-debug ()
+    "Start debugger on `my/gdb-program' from the project root.
+  Uses gdb on Linux and lldb on macOS."
+    (interactive)
+    (unless my/gdb-program
+      (call-interactively #'my/gdb-set-program))
+    (let* ((default-directory (my/project-root))
+           (bin (shell-quote-argument my/gdb-program)))
+      (cond
+       ;; -------- Linux → gdb -i=mi --------
+       ((eq system-type 'gnu/linux)
+        (gdb (format "gdb -i=mi %s" bin)))
+
+       ;; -------- macOS → lldb in term --------
+       ((eq system-type 'darwin)
+        (my/lldb (format "lldb %s" bin)))
+
+       ;; -------- fallback --------
+       (t
+        (gdb (format "gdb -i=mi %s" bin))))))
+
+  (defun my/find-latest-core (dir)
+    "Find newest core file in DIR, or signal a `user-error'."
+    (let* ((files (directory-files dir t "core\\([.0-9]*\\)\\'" t)))
+      (unless files
+        (user-error "No core.* files found in %s" dir))
+      (car (sort files
+                 (lambda (a b)
+                   (time-less-p
+                    (nth 5 (file-attributes b))
+                    (nth 5 (file-attributes a))))))))
+
+  (defun my/gdb-debug-latest-core ()
+    "Run debugger on `my/gdb-program' and newest core file.
+  Uses gdb on Linux and lldb on macOS."
+    (interactive)
+    (unless my/gdb-program
+      (call-interactively #'my/gdb-set-program))
+    (let* ((default-directory (my/project-root))
+           (core (my/find-latest-core default-directory))
+           (bin  (shell-quote-argument my/gdb-program))
+           (core (shell-quote-argument core)))
+      (cond
+       ;; -------- Linux → gdb with core --------
+       ((eq system-type 'gnu/linux)
+        (gdb (format "gdb -i=mi %s %s" bin core)))
+
+       ;; -------- macOS → lldb with -c --------
+       ((eq system-type 'darwin)
+        (my/lldb (format "lldb %s -c %s" bin core)))
+
+       ;; -------- fallback --------
+       (t
+        (gdb (format "gdb -i=mi %s %s" bin core))))))
+
+  ;; keybindings
+  (global-set-key (kbd "C-c d d") #'my/gdb-debug)
+  (global-set-key (kbd "C-c d c") #'my/gdb-debug-latest-core)
+  (global-set-key (kbd "C-c d s") #'my/gdb-set-program)
+
+  ;; nicer gdb UI when applicable
+  (setq gdb-many-windows t
+        gdb-show-main    t)
+
+
+#+end_src
+
+** Tools
+#+begin_src emacs-lisp
+  (use-package magit
+    :ensure t
+    :defer t
+    :commands (magit-status magit-blame)
+    :init
+    ;; Main entrypoint
+    (global-set-key (kbd "C-x g") #'magit-status))
+
+  (use-package which-key
+    :diminish
+    :init
+    (which-key-mode 1)
+    :config
+    (setq which-key-idle-delay 0.5))
+
+#+end_src
+
+** Functions I Wrote
+
+#+begin_src emacs-lisp
+  (defun open-init-file ()
+    "Open the current init file."
+    (interactive)
+    (find-file user-init-file))
+#+end_src
+
+** Misc
+
+#+begin_src emacs-lisp
+  (setq inhibit-startup-message t)
+
+  ;; Basic UI chrome. Tweak these as you like.
+  ;; (scroll-bar-mode -1)
+  ;; (tool-bar-mode -1)
+  ;; (tooltip-mode -1)
+  ;; (set-fringe-mode 10)
+
+  ;; Keep the menu bar for now (helpful while learning Emacs).
+  (menu-bar-mode -1)
+
+#+end_src
+
+#+begin_src emacs-lisp
+
+  ;; macOS clipboard ↔ kill-ring integration, if you want to customise it further.
+  (defun copy-from-osx ()
+    (shell-command-to-string "pbpaste"))
+
+  (defun paste-to-osx (text &optional push)
+    (let ((process-connection-type nil))
+      (let ((proc (start-process "pbcopy" "*Messages*" "pbcopy")))
+        (process-send-string proc text)
+        (process-send-eof proc))))
+
+  (setq interprogram-cut-function 'paste-to-osx)
+  (setq interprogram-paste-function 'copy-from-osx)
+
+  (setq compilation-ask-about-save nil)
+  (auto-save-visited-mode 1)
+  (setq auto-save-visited-interval 1)
+
+  (setq viper-mode nil)
+  (setq viper-inhibit-startup-message t)
+  (require 'viper)
+  (global-set-key (kbd "M-f") 'viper-forward-word)
+  (global-set-key (kbd "M-b") 'viper-backward-word)
+  (global-set-key (kbd "C-v") 'viper-scroll-up)
+  (global-set-key (kbd "M-v") 'viper-scroll-down)
+
+  (electric-pair-mode 1)
+
+  ;; supporting kitty terminal
+  (use-package kkp
+    :ensure t
+    :config
+    ;; (setq kkp-alt-modifier 'alt) ;; use this if you want to map the Alt keyboard modifier to Alt in Emacs (and not to Meta)
+    (global-kkp-mode +1))
+
+#+end_src
