@@ -1,0 +1,1 @@
+/Users/uzman/.emacs.d/straight/repos/magit/.dir-locals.el

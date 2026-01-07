@@ -26,26 +26,38 @@ Operators can be functions, macros, or special forms.
 
 ** Package Management
 
+Since my current workplace (Susquehanna) has a strict proxy, I'll be using straight.el in order to vendor the packages I use within this repo,
+ensuring that I can use emacs, anywhere >:)
+
 #+begin_src emacs-lisp
-  (require 'package)
+  ;; Disable package.el's automatic handling; we'll use straight.el instead.
+  (setq package-enable-at-startup nil)
+  (setq package-archives nil)
 
-  (setq package-archives
-        '(("melpa" . "https://melpa.org/packages/")
-          ("org"   . "https://orgmode.org/elpa/")
-          ("elpa"  . "https://elpa.gnu.org/packages/")))
+  ;; Bootstrap straight.el
+  (defvar bootstrap-version)
+  (let ((bootstrap-file
+         (expand-file-name "straight/repos/straight.el/bootstrap.el"
+                           user-emacs-directory))
+        (bootstrap-version 6))
+    (unless (file-exists-p bootstrap-file)
+      (with-current-buffer
+          (url-retrieve-synchronously
+           "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+           'silent 'inhibit-cookies)
+        (goto-char (point-max))
+        (eval-print-last-sexp)))
+    (load bootstrap-file nil 'nomessage))
 
-  (package-initialize)
+  ;; Integrate straight.el with use-package
+  (setq straight-use-package-by-default t)
 
-  (unless package-archive-contents
-    (package-refresh-contents))
-
-  ;; Bootstrap use-package.
-  (unless (package-installed-p 'use-package)
-    (package-install 'use-package))
-
+  ;; Install use-package itself via straight
+  (straight-use-package 'use-package)
   (require 'use-package)
-  (setq use-package-always-ensure t)
 
+  ;; straight.el takes care of installs, so no need for :ensure
+  (setq use-package-always-ensure nil)
 #+end_src
 
 ** Core Editing Behaviour
@@ -188,7 +200,6 @@ Operators can be functions, macros, or special forms.
 
   ;; Tree-sitter auto setup
   (use-package treesit-auto
-    :ensure t
     :custom
     ;; Ask before downloading grammars the first time
     (treesit-auto-install 'prompt)
@@ -308,7 +319,6 @@ Make sure to run: ulimit -c unlimited
 ** Tools
 #+begin_src emacs-lisp
   (use-package magit
-    :ensure t
     :defer t
     :commands (magit-status magit-blame)
     :init
@@ -380,7 +390,6 @@ Make sure to run: ulimit -c unlimited
 
   ;; supporting kitty terminal
   (use-package kkp
-    :ensure t
     :config
     ;; (setq kkp-alt-modifier 'alt) ;; use this if you want to map the Alt keyboard modifier to Alt in Emacs (and not to Meta)
     (global-kkp-mode +1))

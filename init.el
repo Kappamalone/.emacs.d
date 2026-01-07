@@ -5,7 +5,6 @@
 (org-babel-load-file
  (expand-file-name "config.org" user-emacs-directory))
 
-
 ;;; ------------------------------------------------------------
 ;;; Customisation boilerplate (managed by Custom UI)
 ;;; ------------------------------------------------------------
@@ -56,9 +55,9 @@
      "21421f966817fbfea466f10fd38c779b3cde2a7c0328599c1269fbdc4173680d"
      default))
  '(package-selected-packages
-   '(consult doom-modeline doom-themes embark embark-consult magit
-	     marginalia orderless realgud savehist treesit-auto
-	     vertico which-key)))
+   '(cider consult doom-modeline doom-themes embark embark-consult magit
+	   marginalia orderless realgud savehist treesit-auto vertico
+	   which-key)))
 
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
